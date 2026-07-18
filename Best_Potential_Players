@@ -195,3 +195,4 @@ for p in grafico.patches:
 # Mostriamo il grafico
 plt.tight_layout()
 plt.show()
+
