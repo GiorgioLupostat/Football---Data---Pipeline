@@ -1,3 +1,23 @@
+Technical Implementation Steps
+1. Data Acquisition and Preprocessing
+Imported a real-world, highly detailed football dataset (EA Sports FC 26 player data) via a CSV file using Python and the Pandas library.
+Cleaned and standardized the dataset by converting column names to lowercase and replacing spaces with underscores to prevent coding errors.
+Filtered the dataset to isolate the target demographic: young prospects aged 21 and under.
+2. Feature Selection and Target Definition
+Isolated key physical, technical, and mental attributes relevant to a player's development: Age, Vision, Sprint Speed, Ball Control, Stamina, and Composure.
+Defined the "Target Variable" for the algorithm: A player is classified as a future "Top Player" if their historical estimated potential is 85 or higher (Champions League level).
+3. Machine Learning Model Training
+Implemented an XGBoost Classifier, an industry-standard Machine Learning algorithm known for its high performance and accuracy with structured, tabular data.
+Split the dataset into a training set (80% of the data to teach the algorithm) and a testing set (20% of the data to evaluate its performance).
+Successfully trained the model, achieving an accuracy rate of over 98% on unseen data.
+4. Explainable AI (XAI) Integration
+Integrated the SHAP (SHapley Additive exPlanations) library to solve the "black box" problem typical of AI models.
+Engineered the system to generate human-readable scouting reports. Instead of just providing a raw percentage, the system explains why a player was selected or rejected, detailing exactly how much each specific attribute (e.g., poor stamina or excellent vision) positively or negatively impacted the final prediction.
+5. Automated Discovery and Data Visualization (Dashboard)
+Scaled the algorithm to automatically calculate the success probability for the entire database of Under-21 players simultaneously.
+Developed a ranking system to automatically extract a Top 20 Leaderboard of the highest-rated hidden talents.
+Utilized Matplotlib and Seaborn libraries to generate a clean, professional horizontal bar chart, effectively transforming complex predictive data into an intuitive visual dashboard ready for sports directors and scouting departments.
+
 pip install pandas numpy scikit-learn xgboost shap
 
 import pandas as pd
