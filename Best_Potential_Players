@@ -1,0 +1,177 @@
+pip install pandas numpy scikit-learn xgboost shap
+
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split
+from xgboost import XGBClassifier
+import shap
+
+# ==========================================
+# 1. CARICAMENTO DATI REALI (DA CSV)
+# ==========================================
+print("Avvio del sistema di Scouting Predittivo...")
+print("Caricamento del dataset CSV in corso...")
+
+# Riferimento esatto al file caricato
+nome_file_csv = 'FC26_20250921.csv' 
+
+try:
+    # Aggiunto low_memory=False per evitare il DtypeWarning indicato nell'errore
+    df = pd.read_csv(nome_file_csv, low_memory=False)
+except FileNotFoundError:
+    raise FileNotFoundError(f"ERRORE: File '{nome_file_csv}' non trovato. Verifica il percorso a sinistra.")
+
+# Standardizziamo i nomi delle colonne trasformandoli tutti in minuscolo
+df.columns = df.columns.str.lower().str.replace(' ', '_')
+
+# ==========================================
+# 2. DEFINIZIONE DELLE METRICHE E DEL TARGET
+# ==========================================
+# Le colonne aggiornate con i nomi ESATTI presenti nel tuo dataset
+features_selezionate = [
+    'age', 
+    'mentality_vision', 
+    'movement_sprint_speed', 
+    'skill_ball_control', 
+    'power_stamina', 
+    'mentality_composure'
+]
+
+# Filtriamo i giovani prospetti (Under 21)
+df_giovani = df[df['age'] <= 21].copy()
+
+# Definiamo cosa significa "Top Player" (Potenziale >= 85)
+soglia_top_player = 85
+df_giovani['top_player_futuro'] = (df_giovani['potential'] >= soglia_top_player).astype(int)
+
+# Rimuoviamo i giocatori che hanno dati mancanti (NaN) nelle statistiche che ci interessano
+df_giovani = df_giovani.dropna(subset=features_selezionate + ['top_player_futuro'])
+
+X = df_giovani[features_selezionate]
+y = df_giovani['top_player_futuro']
+
+# Dividiamo i dati: 80% per addestrare il modello, 20% per il test
+X_train, X_test, y_train, y_test, indici_train, indici_test = train_test_split(
+    X, y, df_giovani.index, test_size=0.2, random_state=42
+)
+
+# ==========================================
+# 3. ADDESTRAMENTO DEL MODELLO XGBOOST
+# ==========================================
+print(f"\nAddestramento dell'algoritmo XGBoost su {len(X_train)} giovani talenti...")
+model = XGBClassifier(
+    n_estimators=150,
+    learning_rate=0.05,
+    max_depth=5,
+    random_state=42
+)
+model.fit(X_train, y_train)
+
+accuratezza = model.score(X_test, y_test)
+print(f"Accuratezza del modello: {accuratezza * 100:.2f}%\n")
+
+# ==========================================
+# 4. RICERCA AUTOMATICA DEI MIGLIORI TALENTI (TOP 5)
+# ==========================================
+print("Scansione di tutti i giovani talenti nel database...\n")
+
+# 1. Facciamo prevedere all'IA la probabilità per TUTTI i giocatori nel set di test
+probabilita_tutti = model.predict_proba(X_test)[:, 1] * 100
+
+# 2. Troviamo gli indici dei 5 giocatori con la probabilità più alta
+# np.argsort ordina i valori. [::-1] li capovolge (dal più grande al più piccolo). [:5] prende i primi 5.
+indici_top_5 = np.argsort(probabilita_tutti)[::-1][:5]
+
+# 3. Calcoliamo i valori SHAP (se non lo abbiamo già fatto)
+explainer = shap.TreeExplainer(model)
+shap_values = explainer.shap_values(X_test)
+
+print("🏆 TOP 5 TALENTI SCOPERTI DALL'INTELLIGENZA ARTIFICIALE 🏆")
+print("="*75)
+
+# 4. Creiamo un ciclo che stampa il report per ognuno dei 5 migliori
+for rank, i in enumerate(indici_top_5, 1):
+    # Recuperiamo i dati reali del giocatore
+    nome = df_giovani.loc[indici_test[i], 'short_name']
+    potenziale = df_giovani.loc[indici_test[i], 'potential']
+    prob = probabilita_tutti[i]
+    
+    print(f"{rank}° POSTO: {str(nome).upper()}")
+    print(f"Probabilità IA: {prob:.1f}% | Potenziale Stimato Scout: {potenziale}")
+    print("Punti di forza individuati dall'algoritmo:")
+    
+    # Estraiamo i valori SHAP solo per questo giocatore
+    shap_giocatore = shap_values[i]
+    dati_giocatore = X_test.iloc[i]
+    
+    # Mostriamo solo le caratteristiche che l'IA ha considerato "positive" (i suoi punti di forza)
+    for feature, shap_val, vero_valore in zip(features_selezionate, shap_giocatore, dati_giocatore):
+        if shap_val > 0:
+            print(f"  • {feature.ljust(25)} (Valore: {int(vero_valore):2d}) -> Impatto Positivo: +{shap_val:.2f}")
+    
+    print("-" * 75)
+
+    import matplotlib.pyplot as plt
+import seaborn as sns
+
+# ==========================================
+# 5. ANALISI GLOBALE E CLASSIFICA (LEADERBOARD)
+# ==========================================
+print("Calcolo delle probabilità per TUTTI i giovani (Under 21) del database...\n")
+
+# 1. Chiediamo al modello di calcolare la probabilità per l'intero set 'X' (tutti i giovani, non solo il test)
+probabilita_totali = model.predict_proba(X)[:, 1] * 100
+
+# 2. Inseriamo le probabilità calcolate direttamente nel nostro DataFrame originale
+df_giovani['probabilita_ia'] = probabilita_totali
+
+# 3. Creiamo la Classifica Ufficiale selezionando solo le colonne utili
+classifica = df_giovani[['short_name', 'age', 'potential', 'probabilita_ia']].copy()
+
+# 4. Ordiniamo la classifica dalla percentuale più alta alla più bassa
+classifica = classifica.sort_values(by='probabilita_ia', ascending=False).reset_index(drop=True)
+
+# 5. Mostriamo la Top 20 in formato Tabella (nel terminale)
+print("🏆 LEADERBOARD: TOP 20 TALENTI ASSOLUTI 🏆")
+print(classifica.head(20).to_string(index=True))
+print("\nGenerazione del grafico in corso...")
+
+# ==========================================
+# 6. VISUALIZZAZIONE GRAFICA (DASHBOARD)
+# ==========================================
+# Estraiamo i primi 20 per il grafico
+top_20_grafico = classifica.head(20)
+
+# Impostiamo lo stile del grafico
+plt.figure(figsize=(12, 8))
+sns.set_theme(style="whitegrid")
+
+# Creiamo un grafico a barre orizzontali
+grafico = sns.barplot(
+    data=top_20_grafico, 
+    x='probabilita_ia', 
+    y='short_name', 
+    palette='viridis' # Una scala di colori elegante dal giallo al blu scuro
+)
+
+# Aggiungiamo titoli e formattazione
+plt.title("Top 20 Under-21 - Probability to became Top Player (Potential >= 85)", fontsize=16, fontweight='bold', pad=20)
+plt.xlabel("Probability (%)", fontsize=12)
+plt.ylabel("Player", fontsize=12)
+plt.xlim(0, 105) # Fissiamo l'asse X da 0 a 100%
+
+# Aggiungiamo il valore percentuale esatto alla fine di ogni barra
+for p in grafico.patches:
+    larghezza = p.get_width()
+    plt.text(
+        larghezza + 1,       # Posizione X (appena fuori dalla barra)
+        p.get_y() + p.get_height() / 2, # Posizione Y (centrato sulla barra)
+        f'{larghezza:.1f}%', # Testo da mostrare
+        va='center', 
+        fontsize=10,
+        fontweight='bold'
+    )
+
+# Mostriamo il grafico
+plt.tight_layout()
+plt.show()
